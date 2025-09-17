@@ -1,0 +1,531 @@
+# Default values for main chart (parent level)
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+# To install rasa chart along with vz-ibm-genai set the enabled to true
+rasa:
+  enabled: false
+# To install grafana chart along with vz-ibm-genai set the enabled to true
+grafana:
+  enabled: false
+
+# Global Configuration for GKE
+global:
+  imageTag: v1
+  
+  # Route configuration (OpenShift) - Disable for GKE
+  route:
+    enabled: false  # ✅ Disabled for GKE (Routes OpenShift-specific)
+    labels: ""
+    annotations: ""
+    with_ns: false
+    name_in_url: vz-ibm-genai
+  
+  # GKE Ingress Configuration
+  ingress: verizon-genai-dev.example.com  # ✅ Your GKE ingress host
+  global_repo: true
+  repository: us.icr.io/vz-genai
+  environment: dev
+  cloudplatform: true
+  iamrole: ""  # GKE Workload Identity ARN if needed
+  
+  # Service URLs (internal cluster communication)
+  env1:
+    ui_url: vz-ibm-genai-ui
+  env2:
+    bff_url: vz-ibm-genai-bff
+  env3:
+    service_url: vz-ibm-genai-service
+  env5:
+    keycloak_url: vz-ibm-genai-keycloak
+  # Add more services
+  env6:
+    mongodb_url: vz-ibm-genai-mongodb
+  env7:
+    postgresql_url: vz-ibm-genai-postgresql
+  env8:
+    redis_url: vz-ibm-genai-redis-master
+
+################################### PVC Details ################################
+  pvc:
+    enabled: true
+    # MongoDB PVC
+    mongodb:
+      storageSize: 5Gi
+      storageClassName: "standard"  # ✅ GKE storage class
+      pvname: ""
+    # Keycloak PostgreSQL PVC
+    keycloak_postgres:
+      storageSize: 2Gi
+      storageClassName: "standard"  # ✅ GKE storage class
+      pvname: ""
+    # Redis PVC
+    redis:
+      storageSize: 5Gi
+      storageClassName: "standard"
+      pvname: ""
+
+# Global Environment Variables
+env:
+  # UI Configuration
+  DEFAULT_CLIENT_ID: default-client
+  GET_DATA_FROM: API
+  REACT_DEFAULT_TENANT: ibmconsulting
+  # Global URLs
+  GLOBAL_INGRESS_HOST: "{{ .Values.global.ingress }}"
+  # Database URLs
+  MONGODB_URL: "mongodb://user:password@vz-ibm-genai-mongodb:27017/sandbox"
+  POSTGRESQL_URL: "jdbc:postgresql://vz-ibm-genai-postgresql:5432/keycloak"
+  REDIS_URL: "redis://:passw0rd@vz-ibm-genai-redis-master:6379"
+
+# UI Configuration
+replicaCount: 1
+image:
+  repository: us.icr.io/vz-genai
+  imagename: ui-frontend
+  tag: "{{ .Values.global.imageTag }}"
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Global Image Pull Secret
+icrsecret: jpuv-onartifactory-ci-west  # ✅ Updated for GKE
+
+# UI Init Container
+initContainer:
+  enabled: true
+  name: wait-for-bff
+  image:
+    repository: us.icr.io/vz-genai
+    imagename: busybox
+    tag: "1.36.1"  # ✅ Pinned version instead of latest
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: "100m"  # ✅ Reduced from 6 CPU (excessive for init container)
+      memory: "128Mi"  # ✅ Reduced from 6Gi
+    requests:
+      cpu: "50m"  # ✅ Reduced from 3 CPU
+      memory: "64Mi"  # ✅ Reduced from 3Gi
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
+
+# UI Service Configuration
+service:
+  port: 3001
+  annotations: {}
+  labels: {}
+  type: ClusterIP
+  loadBalancerIP: ""
+  httpPort: 80
+  httpNodePort: null
+  httpsPort: 8443
+  httpsNodePort: null
+  httpManagementPort: 9990
+  httpManagementNodePort: null
+  extraPorts: []
+  loadBalancerSourceRanges: []
+  externalTrafficPolicy: "Cluster"
+  sessionAffinity: ""
+  sessionAffinityConfig: {}
+
+# GKE Ingress Configuration (Main Ingress for all services)
+ingress:
+  enabled: true
+  className: "gce"  # ✅ GKE ingress class
+  hosts:
+    enabled: true
+    host: "{{ .Values.global.ingress }}"  # Dynamic from global
+  tlsSecretName: anp-gcp-tls-secret  # ✅ Your TLS secret
+  labels: {}
+  annotations:
+    # GKE Ingress Annotations
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.allow-http: "false"  # ✅ Force HTTPS
+    # Optional: Static IP
+    # kubernetes.io/ingress.global-static-ip-name: "your-static-ip"
+    # Optional: Managed Certificates
+    # networking.gke.io/managed-certificates: "your-certificate"
+    # SSL Policy (modern)
+    # kubernetes.io/ingress.ssl-policy: "your-ssl-policy"
+  # Path-based routing for all services
+  paths:
+    # UI Frontend
+    - path: /
+      pathType: Prefix
+      serviceName: "{{ .Release.Name }}-ui"  # UI service
+      servicePort: 3001
+    # BFF Service
+    - path: /bff
+      pathType: Prefix
+      serviceName: "{{ .Release.Name }}-bff"
+      servicePort: 8000
+    # Main Service
+    - path: /svc
+      pathType: Prefix
+      serviceName: "{{ .Release.Name }}-service"
+      servicePort: 8080
+    # Keycloak
+    - path: /auth
+      pathType: Prefix
+      serviceName: "{{ .Release.Name }}-keycloak-http"
+      servicePort: 8080
+    # Image Topology
+    - path: /image-topology
+      pathType: Prefix
+      serviceName: "{{ .Release.Name }}-image-topology"
+      servicePort: 8080
+    # Easement QA
+    - path: /easement
+      pathType: Prefix
+      serviceName: "{{ .Release.Name }}-easement-qa"
+      servicePort: 8081
+    # Topology Analysis
+    - path: /topology
+      pathType: Prefix
+      serviceName: "{{ .Release.Name }}-topology-analysis"
+      servicePort: 8082
+    # Conversation Service
+    - path: /tme-conv
+      pathType: Prefix
+      serviceName: "{{ .Release.Name }}-conversation"
+      servicePort: 8000
+
+# Global Service Account Configuration
+serviceAccount:
+  create: true
+  name: tme-global-service-account  # Global service account
+  annotations: {}
+    # GKE Workload Identity (optional)
+    # iam.gke.io/gke-metadata-server-enabled: "true"
+    # iam.gke.io/gke-iam-roles: "roles/iam.workloadIdentityUser"
+  labels: {}
+  imagePullSecrets:
+    - name: jpuv-onartifactory-ci-west  # ✅ Global image pull secret
+
+# Authentication Configuration
+auth:
+  enabled: false
+  mode: oauth
+  serviceName: bmrg-auth-proxy
+  namespace: ibm-essentials-core
+  prefix: /oauth
+  signOutRedirect: /oauth/sign_out
+
+# UI Resources
+resources:
+  limits:
+    cpu: "500m"  # ✅ Reduced from 6 CPU
+    memory: "1Gi"  # ✅ Reduced from 6Gi
+  requests:
+    cpu: "250m"  # ✅ Reduced from 3 CPU
+    memory: "512Mi"  # ✅ Reduced from 4Gi
+
+# Security context for main application containers
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Subchart Configurations (Individual Service Overrides)
+# UI Subchart
+ui:
+  replicaCount: 1
+  image:
+    tag: "{{ .Values.global.imageTag }}"
+  serviceAccount:
+    create: true
+    name: tme-ui-service-account
+    imagePullSecrets:
+      - name: jpuv-onartifactory-ci-west
+  initContainer:
+    resources:
+      limits:
+        cpu: "100m"
+        memory: "128Mi"
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+
+# BFF Subchart
+bff:
+  replicaCount: 1
+  image:
+    tag: "{{ .Values.global.imageTag }}"
+  serviceAccount:
+    create: true
+    name: tme-bff-service-account
+    imagePullSecrets:
+      - name: jpuv-onartifactory-ci-west
+  service:
+    port: 8000
+    annotations:
+      cloud.google.com/neg: '{"ingress": true,"exposed_ports":{"8000":{}}}'
+      beta.cloud.google.com/backend-config: '{"default": "{{ .Release.Name }}-bff-backend-config"}'
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+  health:
+    path: /health
+
+# Service Subchart (Main Backend Service)
+service:
+  replicaCount: 1
+  image:
+    tag: "v6"  # Specific version for service
+  serviceAccount:
+    create: true
+    name: tme-service-account
+    imagePullSecrets:
+      - name: jpuv-onartifactory-ci-west
+  service:
+    port: 8080
+    annotations:
+      cloud.google.com/neg: '{"ingress": true,"exposed_ports":{"8080":{}}}'
+      beta.cloud.google.com/backend-config: '{"default": "{{ .Release.Name }}-service-backend-config"}'
+  resources:
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+    requests:
+      cpu: "250m"
+      memory: "500Mi"
+  health:
+    path: /health
+    enabled: true
+
+# Keycloak Subchart
+keycloak:
+  replicas: 1
+  image:
+    tag: "vul-23"
+  serviceAccount:
+    create: true
+    name: tme-keycloak-service-account
+    imagePullSecrets:
+      - name: jpuv-onartifactory-ci-west
+  service:
+    httpPort: 8080
+    annotations:
+      cloud.google.com/neg: '{"ingress": true,"exposed_ports":{"8080":{}}}'
+      beta.cloud.google.com/backend-config: '{"default": "{{ .Release.Name }}-keycloak-backend-config"}'
+  ingress:
+    enabled: false  # ✅ Disabled - using parent ingress
+  postgresql:
+    serviceAccount:
+      create: true
+      name: tme-postgresql-service-account
+      imagePullSecrets:
+        - name: jpuv-onartifactory-ci-west
+    auth:
+      postgresPassword: "yMu1RfMtLF5tNir9"
+      username: "keycloak"
+      password: "keyclo@kAIW"
+      database: "keycloak"
+    primary:
+      persistence:
+        existingClaim: "vz-ibm-genai-postgresql"
+        storageClass: "standard"
+        size: 8Gi
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+
+# MongoDB Subchart
+mongodb:
+  architecture: standalone
+  auth:
+    existingSecret: "vz-ibm-genai-mongodb-secret"
+    rootUser: root
+    usernames: ["user"]
+    databases: ["sandbox"]
+  image:
+    pullSecrets:
+      - name: jpuv-onartifactory-ci-west
+  persistence:
+    storageClass: "standard"
+    size: 5Gi
+    existingClaim: "vz-ibm-genai-mongodb"
+  serviceAccount:
+    create: true
+    name: tme-mongodb-service-account
+    imagePullSecrets:
+      - name: jpuv-onartifactory-ci-west
+  resources:
+    limits:
+      cpu: 2
+      memory: 4Gi
+    requests:
+      cpu: 256m
+      memory: 512Mi
+
+# Redis Subchart
+redis:
+  architecture: replication
+  auth:
+    enabled: true
+    password: "passw0rd"
+  master:
+    persistence:
+      enabled: true
+      storageClass: "standard"
+      size: 5Gi
+    serviceAccount:
+      create: true
+      name: tme-redis-service-account
+      imagePullSecrets:
+        - name: jpuv-onartifactory-ci-west
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+  replica:
+    replicaCount: 1
+    persistence:
+      enabled: true
+      storageClass: "standard"
+      size: 5Gi
+
+# Image Topology Subchart
+image-topology:
+  replicaCount: 1
+  serviceAccount:
+    create: true
+    name: tme-image-topology-service-account
+    imagePullSecrets:
+      - name: jpuv-onartifactory-ci-west
+  service:
+    port: 8080
+    annotations:
+      cloud.google.com/neg: '{"ingress": true,"exposed_ports":{"8080":{}}}'
+      beta.cloud.google.com/backend-config: '{"default": "{{ .Release.Name }}-image-topology-backend-config"}'
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+  health:
+    path: /health
+
+# Easement QA Subchart
+easement:
+  replicaCount: 1
+  serviceAccount:
+    create: true
+    name: tme-easement-service-account
+    imagePullSecrets:
+      - name: jpuv-onartifactory-ci-west
+  service:
+    port: 8081
+    annotations:
+      cloud.google.com/neg: '{"ingress": true,"exposed_ports":{"8081":{}}}'
+      beta.cloud.google.com/backend-config: '{"default": "{{ .Release.Name }}-easement-backend-config"}'
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+  health:
+    path: /health
+
+# Topology Analysis Subchart
+topology:
+  replicaCount: 1
+  serviceAccount:
+    create: true
+    name: tme-topology-service-account
+    imagePullSecrets:
+      - name: jpuv-onartifactory-ci-west
+  service:
+    port: 8082
+    annotations:
+      cloud.google.com/neg: '{"ingress": true,"exposed_ports":{"8082":{}}}'
+      beta.cloud.google.com/backend-config: '{"default": "{{ .Release.Name }}-topology-backend-config"}'
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+  health:
+    path: /health
+
+# Conversation Subchart
+conversation:
+  replicaCount: 1
+  serviceAccount:
+    create: true
+    name: tme-conversation-service-account
+    imagePullSecrets:
+      - name: jpuv-onartifactory-ci-west
+  service:
+    port: 8000
+    annotations:
+      cloud.google.com/neg: '{"ingress": true,"exposed_ports":{"8000":{}}}'
+      beta.cloud.google.com/backend-config: '{"default": "{{ .Release.Name }}-conversation-backend-config"}'
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+  health:
+    path: /health
+
+# Global Health Check Configuration
+health:
+  enabled: true
+  defaultPath: /health
+  # Service-specific health paths
+  service: /health
+  bff: /health
+  imageTopology: /health
+  easement: /health
+  topology: /health
+  conversation: /health
+  keycloak: /auth/health
+
+# Global BackendConfig Configuration
+backendConfigs:
+  enabled: true
+  # Individual BackendConfig templates will be created for each service

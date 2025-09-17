@@ -1,0 +1,81 @@
+# MongoDB GKE Configuration
+global:
+  imagePullSecrets:
+    - name: jpuv-onartifactory-ci-west
+
+image:
+  registry: us.icr.io
+  repository: vz-genai/verizonmongodb_latest
+  tag: 'v100'
+  pullPolicy: IfNotPresent
+  pullSecrets:
+    - name: jpuv-onartifactory-ci-west
+
+auth:
+  enabled: true
+  rootUser: root
+  existingSecret: "vz-ibm-genai-mongodb-secret"
+  usernames: ["user"]
+  databases: ["sandbox"]
+
+architecture: standalone  # Keep standalone for simplicity
+
+persistence:
+  enabled: true
+  existingClaim: "vz-ibm-genai-mongodb"
+  storageClass: "standard"  # GKE storage class
+  accessModes:
+    - ReadWriteOnce
+  size: 5Gi
+
+serviceAccount:
+  create: true
+  name: tme-mongodb-service-account
+  imagePullSecrets:
+    - name: jpuv-onartifactory-ci-west
+
+rbac:
+  create: true
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  enabled: true
+  runAsUser: 1001
+  runAsNonRoot: true
+
+service:
+  type: ClusterIP
+  portName: mongodb
+  ports:
+    mongodb: 27017
+  annotations: {}  # No external annotations needed
+
+resources:
+  limits:
+    cpu: 2
+    memory: 4Gi
+  requests:
+    cpu: 256m
+    memory: 512Mi
+
+# Probes (TCP-based for MongoDB)
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 30
+  periodSeconds: 20
+  timeoutSeconds: 10
+  failureThreshold: 6
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+metrics:
+  enabled: false  # Disable if not needed

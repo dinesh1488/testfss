@@ -1,0 +1,9 @@
+# Ignore all files with a specific extension
+*.log
+
+# Ignore a specific file
+#config.yaml
+
+# Ignore all folders named "temp" anywhere in the chart
+temp/
+tests/

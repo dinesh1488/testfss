@@ -1,0 +1,175 @@
+# Default values for svc.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+replicaCount: 1
+
+image:
+  repository: us.icr.io/vz-genai/service
+  #repository: icr-remote.rtfx.aepsc.com/itvsdp/it-value-stream-delivery/itvsdp-aep-svc
+  pullPolicy: Always
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "v6"
+
+# Image pull secrets - updated for GKE
+imagePullSecrets:
+  - name: jpuv-onartifactory-ci-west  # Updated to your GKE secret
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+    # GKE Workload Identity (optional)
+    # iam.gke.io/gke-metadata-server-enabled: "true"
+    # iam.gke.io/gke-iam-roles: "roles/iam.workloadIdentityUser"
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: tme-service-account  # Consistent naming
+  imagePullSecrets:
+    - name: jpuv-onartifactory-ci-west  # Updated to your GKE secret
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+  fsGroup: 1000  # Added for proper volume permissions
+
+# Security context for container
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false  # Set to true if application supports it
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# GKE Ingress configuration (replaced AWS ALB)
+ingress:
+  enabled: true
+  className: "gce"  # GKE ingress class
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.allow-http: "false"
+    # Optional: Static IP if needed
+    # kubernetes.io/ingress.global-static-ip-name: "your-static-ip"
+    # Optional: Managed SSL Certificate
+    # networking.gke.io/managed-certificates: "your-certificate"
+  hosts:
+    - host: "{{ .Values.global.ingress }}"  # From parent chart
+      paths:
+        - path: /svc
+          pathType: Prefix
+  tls:
+    - secretName: anp-gcp-tls-secret  # Your TLS secret
+      hosts:
+        - "{{ .Values.global.ingress }}"
+
+initContainer:
+  enabled: true
+  name: wait-for-mongodb
+  image:
+    repository: us.icr.io/vz-genai/busybox
+    tag: "1.36.1"  # Pinned version instead of latest
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 25m
+      memory: 25Mi
+    requests:
+      cpu: 25m
+      memory: 25Mi
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+resources:
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  limits:
+    cpu: 1000m
+    memory: 2Gi
+  requests:
+    cpu: 250m
+    memory: 500Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+# Health probes for better reliability
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health  # Or /actuator/health if Spring Boot
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /health  # Or /actuator/health if Spring Boot
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: true
+  httpGet:
+    path: /health  # Or /actuator/health if Spring Boot
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 30
+  successThreshold: 1
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Environment variables for service configuration
+env:
+  # Database configuration
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://vz-ibm-genai-postgresql:5432/keycloak"
+  SPRING_DATASOURCE_USERNAME: "keycloak"
+  SPRING_DATASOURCE_PASSWORD: "keyclo@kAIW"
+  # Redis configuration
+  SPRING_REDIS_HOST: "vz-ibm-genai-redis-master"
+  SPRING_REDIS_PORT: "6379"
+  SPRING_REDIS_PASSWORD: "passw0rd"
+  # MongoDB configuration
+  SPRING_DATA_MONGODB_HOST: "vz-ibm-genai-mongodb"
+  SPRING_DATA_MONGODB_PORT: "27017"
+  SPRING_DATA_MONGODB_DATABASE: "sandbox"
+  SPRING_DATA_MONGODB_USERNAME: "user"
+  SPRING_DATA_MONGODB_PASSWORD: "passw0rd"  # Use secret in production
+  # Application configuration
+  SERVER_PORT: "8080"
+  MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"
+  # Logging configuration
+  LOGGING_LEVEL_COM_VERIZON_GENAI: "INFO"

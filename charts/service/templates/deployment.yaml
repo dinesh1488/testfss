@@ -1,0 +1,122 @@
+{{- $releaseNamespace := .Release.Namespace -}}
+{{- $releaseName := .Release.Name -}}
+{{- $clusteringress := .Values.ingress.host -}}
+{{- if .Values.global.route.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "service.fullname" . }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "service.selectorLabels" . | nindent 8 }}
+        app: {{ .Release.Name }}
+    spec:     
+      serviceAccountName: {{ .Release.Name }}
+      serviceAccount: {{ .Release.Name }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.initContainer.enabled }}
+      initContainers:      
+      - name: "{{ .Values.initContainer.name }}"
+        image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}"
+        imagePullPolicy: "{{ .Values.initContainer.image.pullPolicy }}"
+        resources:
+{{ toYaml .Values.initContainer.resources | indent 12 }}
+        command: ["/bin/sh", "-c", "for i in $(seq 1 200); do nc -z -w3 {{ $releaseName }}-mongodb 27017  && nc -z -w3 {{ $releaseName }}-keycloak-http 80  && exit 0 || sleep 3; done; exit 1"]
+      {{- end}}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+          - name: DB_SERVICE_NAME
+            value: {{ $releaseName }}-mongodb
+          - name: KEYCLOAK_URL
+            value: https://genai-vz.{{ .Values.global.ingress}}
+          - name: DBPWD
+            value: H7ybgK0lqrmz51!
+          - name: KEYCLOAK_UID
+            value: admin
+          - name: KEYCLOAK_PWD
+            valueFrom:
+                secretKeyRef:
+                  name: {{ include "service.fullname" . }}-secret
+                  key: KEYCLOAK_PWD
+          - name: PASS
+            value: Lkr5Qmb070XGOK3lc
+          - name: ENCRYPTED_BASE
+            value: >-
+              CAtoDU/+wTSWM8D8pKqmSflKvQMMuj6K/QdoLCO+kFcwXZdJbr1zf1itL2xKXZtmJNFEaf62EcnQ
+          - name: DEFAULT_TENANT
+            value: ibmconsulting
+          - name: DEFAULT_DATABASE
+            value: productMaster
+          - name: DEFAULT_MONGO_USER
+            value: root
+          - name: DEFAULT_MONGO_CRED
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "service.fullname" . }}-secret
+                key: DEFAULT_MONGO_CRED
+          - name: KEYCLOAK_ADMIN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "service.fullname" . }}-secret
+                key: KEYCLOAK_ADMIN_PASSWORD
+          - name: KEYCLOAK_ADMIN_USER
+            value: admin
+          - name: CLIENT_ID
+            value: MDc5NDI3MmUtODIyNy00
+          - name: CLIENT_SECRET
+            value: MzYyMjljYzQtYjY0NS00
+          - name: AUTHORIZATION_URL
+            value: 'https://prepiam.ice.ibmcloud.com/oidc/endpoint/default/authorize'
+          - name: TOKEN_URL
+            value: 'https://prepiam.ice.ibmcloud.com/oidc/endpoint/default/token'
+          - name: USERINFO_URL
+            value: 'https://prepiam.ice.ibmcloud.com/oidc/endpoint/default/userinfo'
+          - name: ISSUER_URL
+            value: 'https://prepiam.ice.ibmcloud.com/oidc/endpoint/default'
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: http
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,394 @@
+# Copyright VMware, Inc.
+# SPDX-License-Identifier: APACHE-2.0
+## @section Global parameters
+## Global Docker image parameters
+## Please, note that this will override the image parameters, including dependencies, configured to use the global value
+## Current available global Docker image parameters: imageRegistry, imagePullSecrets and storageClass
+##
+## @param global.imageRegistry Global Docker image registry
+## @param global.imagePullSecrets Global Docker registry secret names as an array
+## @param global.storageClass Global StorageClass for Persistent Volume(s)
+## @param global.redis.password Global Redis&reg; password (overrides `auth.password`)
+##
+global:
+  imageRegistry: ""
+  ## E.g.
+  ## imagePullSecrets:
+  ## - myRegistryKeySecretName
+  ##
+  imagePullSecrets:
+    - name: jpuv-onartifactory-ci-west  # Updated to your GKE secret
+  storageClass: "standard"  # GKE storage class (was ibmc-block-bronze)
+  redis:
+    password: "passw0rd"
+
+## @section Common parameters
+##
+## @param kubeVersion Override Kubernetes version
+##
+kubeVersion: ""
+## @param nameOverride String to partially override common.names.fullname
+##
+nameOverride: ""
+## @param fullnameOverride String to fully override common.names.fullname
+##
+fullnameOverride: ""
+## @param commonLabels Labels to add to all deployed objects
+##
+commonLabels: {}
+## @param commonAnnotations Annotations to add to all deployed objects
+##
+commonAnnotations: {}
+## @param secretAnnotations Annotations to add to secret
+##
+secretAnnotations: {}
+## @param clusterDomain Kubernetes cluster domain name
+##
+clusterDomain: cluster.local
+## @param extraDeploy Array of extra objects to deploy with the release
+##
+extraDeploy: []
+## @param useHostnames Use hostnames internally when announcing replication. If false, the hostname will be resolved to an IP address
+##
+useHostnames: true
+## @param nameResolutionThreshold Failure threshold for internal hostnames resolution
+##
+nameResolutionThreshold: 5
+## @param nameResolutionTimeout Timeout seconds between probes for internal hostnames resolution
+##
+nameResolutionTimeout: 5
+## Enable diagnostic mode in the deployment
+##
+diagnosticMode:
+  ## @param diagnosticMode.enabled Enable diagnostic mode (all probes will be disabled and the command will be overridden)
+  ##
+  enabled: false
+  ## @param diagnosticMode.command Command to override all containers in the deployment
+  ##
+  command:
+    - sleep
+  ## @param diagnosticMode.args Args to override all containers in the deployment
+  ##
+  args:
+    - infinity
+
+## @section Redis&reg; Image parameters
+##
+## Bitnami Redis&reg; image
+## ref: https://hub.docker.com/r/bitnami/redis/tags/
+## @param image.registry Redis&reg; image registry
+## @param image.repository Redis&reg; image repository
+## @param image.tag Redis&reg; image tag (immutable tags are recommended)
+## @param image.digest Redis&reg; image digest in the way sha256:aa.... Please note this parameter, if set, will override the tag
+## @param image.pullPolicy Redis&reg; image pull policy
+## @param image.pullSecrets Redis&reg; image pull secrets
+## @param image.debug Enable image debug mode
+##
+image:
+  registry: us.icr.io
+  repository: vz-genai/verizonredis
+  tag: v100
+  digest: ""
+  ## Specify a imagePullPolicy
+  ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
+  ## ref: https://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+  ##
+  pullPolicy: IfNotPresent
+  ## Optionally specify an array of imagePullSecrets.
+  ## Secrets must be manually created in the namespace.
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  ## e.g:
+  ## pullSecrets:
+  ## - myRegistryKeySecretName
+  ##
+  pullSecrets:
+    - name: jpuv-onartifactory-ci-west  # Updated to your GKE secret
+  ## Enable debug mode
+  ##
+  debug: false
+
+## @section Redis&reg; common configuration parameters
+## https://github.com/bitnami/containers/tree/main/bitnami/redis#configuration
+##
+## @param architecture Redis&reg; architecture. Allowed values: `standalone` or `replication`
+##
+architecture: replication  # Keep replication for HA
+## Redis&reg; Authentication parameters
+## ref: https://github.com/bitnami/containers/tree/main/bitnami/redis#setting-the-server-password-on-first-run
+##
+auth:
+  ## @param auth.enabled Enable password authentication
+  ##
+  enabled: true
+  ## @param auth.sentinel Enable password authentication on sentinels too
+  ##
+  sentinel: true
+  ## @param auth.password Redis&reg; password
+  ## Defaults to a random 10-character alphanumeric string if not set
+  ##
+  password: "passw0rd"
+  ## @param auth.existingSecret The name of an existing secret with Redis&reg; credentials
+  ## NOTE: When it's set, the previous `auth.password` parameter is ignored
+  ##
+  existingSecret: ""
+  ## @param auth.existingSecretPasswordKey Password key to be retrieved from existing secret
+  ## NOTE: ignored unless `auth.existingSecret` parameter is set
+  ##
+  existingSecretPasswordKey: ""
+  ## @param auth.usePasswordFiles Mount credentials as files instead of using an environment variable
+  ##
+  usePasswordFiles: false
+
+## @param commonConfiguration [string] Common configuration to be added into the ConfigMap
+## ref: https://redis.io/topics/config
+##
+commonConfiguration: |-
+  # Enable AOF https://redis.io/topics/persistence#append-only-file
+  appendonly yes
+  # Disable RDB persistence, AOF persistence already enabled.
+  save ""
+  # Redis memory configuration
+  maxmemory 2gb
+  maxmemory-policy allkeys-lru
+  # Security configuration
+  rename-command FLUSHALL ""
+  rename-command FLUSHDB ""
+  rename-command DEBUG ""
+  rename-command CONFIG ""
+
+## @param existingConfigmap The name of an existing ConfigMap with your custom configuration for Redis&reg; nodes
+##
+existingConfigmap: ""
+
+## @section Redis&reg; master configuration parameters
+##
+master:
+  ## @param master.count Number of Redis&reg; master instances to deploy (experimental, requires additional configuration)
+  ##
+  count: 1
+  ## @param master.configuration Configuration for Redis&reg; master nodes
+  ## ref: https://redis.io/topics/config
+  ##
+  configuration: ""
+  ## @param master.disableCommands Array with Redis&reg; commands to disable on master nodes
+  ## Commands will be completely disabled by renaming each to an empty string.
+  ## ref: https://redis.io/topics/security#disabling-of-specific-commands
+  ##
+  disableCommands:
+    - FLUSHDB
+    - FLUSHALL
+    - DEBUG
+    - CONFIG
+  ## @param master.command Override default container command (useful when using custom images)
+  ##
+  command: []
+  ## @param master.args Override default container args (useful when using custom images)
+  ##
+  args: []
+  ## @param master.enableServiceLinks Whether information about services should be injected into pod's environment variable
+  ##
+  enableServiceLinks: true
+  ## @param master.preExecCmds Additional commands to run prior to starting Redis&reg; master
+  ##
+  preExecCmds: []
+  ## @param master.extraFlags Array with additional command line flags for Redis&reg; master
+  ## e.g:
+  ## extraFlags:
+  ## - "--maxmemory-policy volatile-ttl"
+  ## - "--repl-backlog-size 1024mb"
+  ##
+  extraFlags: []
+    # - "--maxmemory-policy allkeys-lru"
+    # - "--repl-backlog-size 1gb"
+  ## @param master.extraEnvVars Array with extra environment variables to add to Redis&reg; master nodes
+  ## e.g:
+  ## extraEnvVars:
+  ## - name: FOO
+  ## value: "bar"
+  ##
+  extraEnvVars: []
+  ## @param master.extraEnvVarsCM Name of existing ConfigMap containing extra env vars for Redis&reg; master nodes
+  ##
+  extraEnvVarsCM: ""
+  ## @param master.extraEnvVarsSecret Name of existing Secret containing extra env vars for Redis&reg; master nodes
+  ##
+  extraEnvVarsSecret: ""
+  ## @param master.containerPorts.redis Container port to open on Redis&reg; master nodes
+  ##
+  containerPorts:
+    redis: 6379
+  ## Configure extra options for Redis&reg; containers' liveness and readiness probes
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes
+  ## @param master.startupProbe.enabled Enable startupProbe on Redis&reg; master nodes
+  ## @param master.startupProbe.initialDelaySeconds Initial delay seconds for startupProbe
+  ## @param master.startupProbe.periodSeconds Period seconds for startupProbe
+  ## @param master.startupProbe.timeoutSeconds Timeout seconds for startupProbe
+  ## @param master.startupProbe.failureThreshold Failure threshold for startupProbe
+  ## @param master.startupProbe.successThreshold Success threshold for startupProbe
+  ##
+  startupProbe:
+    enabled: true
+    initialDelaySeconds: 20
+    periodSeconds: 5
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 5
+  ## @param master.livenessProbe.enabled Enable livenessProbe on Redis&reg; master nodes
+  ## @param master.livenessProbe.initialDelaySeconds Initial delay seconds for livenessProbe
+  ## @param master.livenessProbe.periodSeconds Period seconds for livenessProbe
+  ## @param master.livenessProbe.timeoutSeconds Timeout seconds for livenessProbe
+  ## @param master.livenessProbe.failureThreshold Failure threshold for livenessProbe
+  ## @param master.livenessProbe.successThreshold Success threshold for livenessProbe
+  ##
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 20
+    periodSeconds: 5
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 5
+  ## @param master.readinessProbe.enabled Enable readinessProbe on Redis&reg; master nodes
+  ## @param master.readinessProbe.initialDelaySeconds Initial delay seconds for readinessProbe
+  ## @param master.readinessProbe.periodSeconds Period seconds for readinessProbe
+  ## @param master.readinessProbe.timeoutSeconds Timeout seconds for readinessProbe
+  ## @param master.readinessProbe.failureThreshold Failure threshold for readinessProbe
+  ## @param master.readinessProbe.successThreshold Success threshold for readinessProbe
+  ##
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 20
+    periodSeconds: 5
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 5
+  ## @param master.customStartupProbe Custom startupProbe that overrides the default one
+  ##
+  customStartupProbe: {}
+  ## @param master.customLivenessProbe Custom livenessProbe that overrides the default one
+  ##
+  customLivenessProbe: {}
+  ## @param master.customReadinessProbe Custom readinessProbe that overrides the default one
+  ##
+  customReadinessProbe: {}
+  ## Redis&reg; master resource requests and limits
+  ## ref: https://kubernetes.io/docs/user-guide/compute-resources/
+  ## @param master.resources.limits The resources limits for the Redis&reg; master containers
+  ## @param master.resources.requests The requested resources for the Redis&reg; master containers
+  ##
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+  ## Configure Pods Security Context
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
+  ## @param master.podSecurityContext.enabled Enabled Redis&reg; master pods' Security Context
+  ## @param master.podSecurityContext.fsGroup Set Redis&reg; master pod's Security Context fsGroup
+  ##
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+    fsGroup: 1001  # Added for proper volume permissions
+  ## Configure Container Security Context
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
+  ## @param master.containerSecurityContext.enabled Enabled Redis&reg; master containers' Security Context
+  ## @param master.containerSecurityContext.runAsUser Set Redis&reg; master containers' Security Context runAsUser
+  ## @param master.containerSecurityContext.runAsGroup Set Redis&reg; master containers' Security Context runAsGroup
+  ## @param master.containerSecurityContext.runAsNonRoot Set Redis&reg; master containers' Security Context runAsNonRoot
+  ## @param master.containerSecurityContext.allowPrivilegeEscalation Is it possible to escalate Redis&reg; pod(s) privileges
+  ## @param master.containerSecurityContext.seccompProfile.type Set Redis&reg; master containers' Security Context seccompProfile
+  ## @param master.containerSecurityContext.capabilities.drop Set Redis&reg; master containers' Security Context capabilities to drop
+  ##
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+    runAsGroup: 1001  # Updated to match fsGroup
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+    capabilities:
+      drop:
+        - ALL
+  ## @param master.kind Use either Deployment or StatefulSet (default)
+  ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/
+  ##
+  kind: StatefulSet
+  ## @param master.schedulerName Alternate scheduler for Redis&reg; master pods
+  ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
+  ##
+  schedulerName: ""
+  ## @param master.updateStrategy.type Redis&reg; master statefulset strategy type
+  ## @skip master.updateStrategy.rollingUpdate
+  ## ref: https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#update-strategies
+  ##
+  updateStrategy:
+    ## StrategyType
+    ## Can be set to RollingUpdate, OnDelete (statefulset), Recreate (deployment)
+    ##
+    type: RollingUpdate
+  ## @param master.minReadySeconds How many seconds a pod needs to be ready before killing the next, during update
+  ##
+  minReadySeconds: 0
+  ## @param master.priorityClassName Redis&reg; master pods' priorityClassName
+  ##
+  priorityClassName: ""
+  ## @param master.hostAliases Redis&reg; master pods host aliases
+  ## https://kubernetes.io/docs/concepts/services-networking/add-entries-to-pod-etc-hosts-with-host-aliases/
+  ##
+  hostAliases: []
+  ## @param master.podLabels Extra labels for Redis&reg; master pods
+  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+  ##
+  podLabels: {}
+  ## @param master.podAnnotations Annotations for Redis&reg; master pods
+  ## ref: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+  ##
+  podAnnotations: {}
+  ## @param master.shareProcessNamespace Share a single process namespace between all of the containers in Redis&reg; master pods
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/
+  ##
+  shareProcessNamespace: false
+  ## @param master.podAffinityPreset Pod affinity preset. Ignored if `master.affinity` is set. Allowed values: `soft` or `hard`
+  ## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+  ##
+  podAffinityPreset: ""
+  ## @param master.podAntiAffinityPreset Pod anti-affinity preset. Ignored if `master.affinity` is set. Allowed values: `soft` or `hard`
+  ## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
+  ##
+  podAntiAffinityPreset: soft
+  ## Node master.affinity preset
+  ## ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+  ##
+  nodeAffinityPreset:
+    ## @param master.nodeAffinityPreset.type Node affinity preset type. Ignored if `master.affinity` is set. Allowed values: `soft` or `hard`
+    ##
+    type: ""
+    ## @param master.nodeAffinityPreset.key Node label key to match. Ignored if `master.affinity` is set
+    ##
+    key: ""
+    ## @param master.nodeAffinityPreset.values Node label values to match. Ignored if `master.affinity` is set
+    ## E.g.
+    ## values:
+    ## - e2e-az1
+    ## - e2e-az2
+    ##
+    values: []
+  ## @param master.affinity Affinity for Redis&reg; master pods assignment
+  ## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+  ## NOTE: `master.podAffinityPreset`, `master.podAntiAffinityPreset`, and `master.nodeAffinityPreset` will be ignored when it's set
+  ##
+  affinity: {}
+  ## @param master.nodeSelector Node labels for Redis&reg; master pods assignment
+  ## ref: https://kubernetes.io/docs/user-guide/node-selection/
+  ##
+  nodeSelector: {}
+  ## @param master.tolerations Tolerations for Redis&reg; master pods assignment
+  ## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+  ##
+  tolerations: []
+  ## @param master.topologySpreadConstraints Spread Constraints for Redis&reg; master pod assignment
+  ## ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread

@@ -1,0 +1,19 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata: 
+  name: vz-ibm-genai-mongodb
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-weight": "-2"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.global.pvc.mongodb.storageSize | default "5Gi" }}   
+  storageClassName: {{ .Values.global.pvc.mongodb.storageClassName | default "" }}
+  volumeMode: Filesystem
+{{- if .Values.global.pvc.mongodb }}
+  volumeName: {{ .Values.global.pvc.mongodb.pvname }}
+{{- end }}
+

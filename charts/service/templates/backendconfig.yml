@@ -1,0 +1,29 @@
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: {{ .Release.Name }}-service-backend-config  # ✅ Specific name for service
+  labels:
+    app.kubernetes.io/name: service
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: backend-config
+spec:
+  healthCheck:
+    checkIntervalSec: 15
+    port: {{ .Values.service.port }}  # ✅ Dynamic port from values.yaml (8080)
+    type: HTTP
+    # ✅ Proper health check path
+    requestPath: /health  # Standard health endpoint
+    # Alternative options (uncomment as needed):
+    # requestPath: /actuator/health  # For Spring Boot applications
+    # requestPath: /healthz  # For other frameworks
+    
+    # Additional health check settings for reliability
+    healthyHttpThreshold: 2    # Minimum consecutive successful checks
+    unhealthyThreshold: 2      # Minimum consecutive failed checks  
+    timeoutSec: 5              # Timeout for each health check
+    healthyCheckPath: /health  # Same as requestPath for consistency
+    
+    # Optional: Custom HTTP headers if needed
+    # requestHeadersToAdd:
+    # - headerName: "Host"
+    # headerValue: "{{ .Values.global.ingress }}"

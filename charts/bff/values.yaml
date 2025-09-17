@@ -1,0 +1,118 @@
+# Default values for bff.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+replicaCount: 1
+
+image:
+  repository: us.icr.io/vz-genai
+  imagename: bff
+  pullPolicy: Always
+  tag: "v1"
+
+# Image pull secret - use the one you mentioned earlier
+imagePullSecrets:
+  - name: jpuv-onartifactory-ci-west  # Updated to your secret
+
+nameOverride: ""
+fullnameOverride: ""
+
+env:
+  ENABLE_TLS: "0"
+
+serviceAccount:
+  create: true
+  name: tme-bff-service-account  # Consistent naming
+  annotations: {}
+  imagePullSecrets:
+    - name: jpuv-onartifactory-ci-west  # Same secret as above
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+service:
+  type: ClusterIP
+  port: 8000
+  # GKE-specific annotations will be added in service template
+
+# GKE Ingress configuration
+ingress:
+  enabled: true
+  className: "gce"  # GKE ingress class
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    kubernetes.io/ingress.allow-http: "false"
+    # Add more GKE-specific annotations if needed
+  hosts:
+    - host: {{ .Values.global.ingress }}  # From parent values
+      paths:
+        - path: /bff
+          pathType: Prefix
+  tls:
+    - secretName: anp-gcp-tls-secret  # Your TLS secret
+      hosts:
+        - {{ .Values.global.ingress }}
+
+initContainer:
+  enabled: true
+  name: wait-for-service
+  image:
+    repository: us.icr.io/vz-genai
+    imagename: busybox
+    tag: "1.36.1"  # Pinned version instead of latest
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 25m
+      memory: 25Mi
+    requests:
+      cpu: 25m
+      memory: 25Mi
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 4Gi
+  requests:
+    cpu: 100m
+    memory: 200Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+
+persistence: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Add health probes for better reliability
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health  # Or /actuator/health if Spring Boot
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /health  # Or /actuator/health if Spring Boot
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5

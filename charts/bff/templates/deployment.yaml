@@ -1,0 +1,112 @@
+{{- $releaseNamespace := .Release.Namespace -}}
+{{- $releaseName := .Release.Name -}}
+{{- $clusteringress := .Values.ingress.host -}}
+{{- if .Values.global.route.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bff.fullname" . }}
+  labels:
+    {{- include "bff.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "bff.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "bff.selectorLabels" . | nindent 8 }}
+    spec:      
+      serviceAccountName: {{ .Release.Name }}
+      serviceAccount: {{ .Release.Name }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.initContainer.enabled }}
+      initContainers:      
+      - name: "{{ .Values.initContainer.name }}"
+        {{- if .Values.global.global_repo }}
+        image: "{{ .Values.global.repository }}/{{ .Values.initContainer.image.imagename }}:{{ .Values.initContainer.image.tag }}"
+        {{- else}}
+        image: "{{ .Values.initContainer.image.repository }}/{{ .Values.initContainer.image.imagename }}:{{ .Values.initContainer.image.tag }}"
+        {{- end }}
+        imagePullPolicy: "{{ .Values.initContainer.image.pullPolicy }}"
+        resources:
+{{ toYaml .Values.initContainer.resources | indent 12 }}
+        command: ["/bin/sh", "-c", "for i in $(seq 1 200); do nc -z -w3 {{ $releaseName }}-service 8080 && exit 0 || sleep 3; done; exit 1"]
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.global.global_repo }}
+          image: "{{ .Values.global.repository }}/{{ .Values.image.imagename }}:{{ .Values.image.tag }}"
+          {{- else }}
+          image: "{{ .Values.image.repository }}/{{ .Values.image.imagename }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          {{- end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:        
+          - name: CLIENT_ID
+            value: default-client   
+          - name: REDISURL
+            value: redis://default:passw0rd@vz-ibm-genai-redis-master:/0     
+          - name: BFF_SVC_URL
+            value: https://vz-ibm-genai.{{ .Values.global.ingress}}/svc
+          - name: ROOT_URL
+            value: https://vz-ibm-genai.{{ .Values.global.ingress}}
+          - name: SVC_URL
+            value: https://vz-ibm-genai.{{ .Values.global.ingress}}/svc
+          - name: KEYCLOAK_SERVER
+            value: https://vz-ibm-genai.{{ .Values.global.ingress}}/auth
+          #Other Envs
+          {{- range $key, $value := .Values.env }}
+          - name: "{{ $key }}"
+            value: "{{ $value }}"
+          {{- end }}
+          - name: USER_NAME
+            valueFrom:
+              secretKeyRef:
+                name: vz-ibm-genai-keycloak-bff
+                key: keycloak_admin_user
+          - name: PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: vz-ibm-genai-keycloak-bff
+                key: keycloak_admin_password
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          {{- if .Values.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          {{- end}}
+          {{- if .Values.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          {{- end}}    
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
